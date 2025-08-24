@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+langchain
+openai
+faiss-cpu
+python-dotenv
+pydantic
+bcrypt
+pyjwt
+pytest
