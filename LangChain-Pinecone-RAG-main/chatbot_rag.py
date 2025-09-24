@@ -90,7 +90,7 @@ if prompt:
         pass
     elif web_results:
         # Only show web search progress when actually searching
-        with st.spinner("🌐 Searching the web..."):
+        with st.spinner("🌐 Searching the web...."):
             pass
 
     # initialize the llm (Groq + LLaMA3-70B)
