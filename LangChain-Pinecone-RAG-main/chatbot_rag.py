@@ -1,26 +1,26 @@
-# import streamlit
 import streamlit as st
 import os
 import time
+import re
+from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 
-# import pinecone
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 
-# import langchain
 from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 import concurrent.futures
+import requests
+import json
 
+# Load environment variables
 load_dotenv()
 
-st.title("Hybrid RAG Chatbot (Groq + LLaMA3-70B + Pinecone + Web Search)")
+st.title("Cultural Travel Food Guide (Veg + Allergy Aware)")
 
-# Performance optimization: Cache expensive operations
+# Cache expensive operations
 @st.cache_resource
 def get_pinecone_index():
     pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
@@ -37,16 +37,122 @@ def get_vector_store():
     embeddings = get_embeddings()
     return PineconeVectorStore(index=index, embedding=embeddings)
 
-# initialize components
+def is_food_domain_query(text: str) -> bool:
+    text_l = text.lower()
+    food_terms = [
+        "food", "foods", "dish", "dishes", "cuisine", "eat", "eating", "restaurant",
+        "restaurants", "hotel", "hotels", "dine", "dining", "street food", "veg",
+        "vegetarian", "vegan", "allergy", "allergies", "gluten", "halal", "kosher",
+        "breakfast", "lunch", "dinner", "brunch", "cafe", "café"
+    ]
+    travel_terms = ["travel", "trip", "destination", "city", "country", "place", "visit"]
+    return any(t in text_l for t in food_terms) or any(t in text_l for t in travel_terms)
+
+
+def extract_destination(text: str) -> Optional[str]:
+    # Simple heuristics for destination phrases
+    patterns = [
+        r"in\s+([A-Z][A-Za-z\-\s]+)$",
+        r"to\s+([A-Z][A-Za-z\-\s]+)$",
+        r"at\s+([A-Z][A-Za-z\-\s]+)$",
+        r"(?:go(?:ing)?\s+to|visit(?:ing)?)\s+([A-Z][A-Za-z\-\s]+)",
+    ]
+    text_stripped = text.strip()
+    for pat in patterns:
+        m = re.search(pat, text_stripped, flags=re.IGNORECASE)
+        if m:
+            dest = m.group(1).strip(" .!?,")
+            return dest
+    # fallback: look for last capitalized token sequence
+    tokens = re.findall(r"[A-Z][A-Za-z\-]+(?:\s+[A-Z][A-Za-z\-]+)*", text_stripped)
+    if tokens:
+        return tokens[-1]
+    return None
+
+
+def extract_preferences(text: str) -> Tuple[Optional[str], bool, List[str]]:
+    destination = extract_destination(text)
+    tl = text.lower()
+    is_veg = False
+    if re.search(r"\b(vegetarian|vegan|veg-only|veg friendly|veg-friendly)\b", tl):
+        is_veg = True
+    if re.search(r"\b(non-veg|non veg|meat lover|steak)\b", tl):
+        is_veg = False
+    # Extract allergies
+    known_allergens = [
+        "peanut", "peanuts", "tree nut", "tree nuts", "nut", "nuts", "almond", "cashew", "walnut",
+        "pistachio", "hazelnut", "pecan", "macadamia", "brazil nut", "sesame", "soy", "soya",
+        "gluten", "wheat", "dairy", "milk", "lactose", "egg", "eggs", "shellfish", "shrimp",
+        "prawn", "crab", "lobster", "mollusk", "clam", "oyster", "fish", "mustard"
+    ]
+    allergies: List[str] = []
+    if "allerg" in tl or re.search(r"\bno\s+\w+\b", tl):
+        for allergen in known_allergens:
+            if re.search(rf"\b{re.escape(allergen)}\b", tl):
+                allergies.append(allergen)
+    # Normalize unique singular terms
+    normalized = []
+    for a in allergies:
+        a_s = a.rstrip('s')
+        if a_s not in normalized:
+            normalized.append(a_s)
+    return destination, is_veg, normalized
+
+
+def call_groq_api(messages: list, api_key: str) -> str:
+    """Call Groq API directly using requests"""
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Convert LangChain messages to Groq format
+    groq_messages = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            groq_messages.append({"role": "system", "content": msg.content})
+        elif isinstance(msg, HumanMessage):
+            groq_messages.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            groq_messages.append({"role": "assistant", "content": msg.content})
+    
+    data = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": groq_messages,
+        "temperature": 0.4,
+        "max_tokens": 1000
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    except Exception as e:
+        raise Exception(f"Groq API error: {e}")
+
+
+# Initialize components
 vector_store = get_vector_store()
 search_tool = DuckDuckGoSearchRun()
 
-# initialize chat history
+# Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    st.session_state.messages.append(SystemMessage("You are a helpful AI assistant with access to both local documents and current web information."))
+    st.session_state.messages.append(
+        SystemMessage(
+            "You are a cultural travel guide focused strictly on food recommendations. You: \n"
+            "- Only discuss foods, cuisines, restaurants, and hotels in the requested destination.\n"
+            "- If the user says they are vegetarian, recommend only vegetarian-friendly hotels and dishes.\n"
+            "- If the user lists allergies, avoid dishes containing those allergens and warn if uncertain.\n"
+            "- If the request is unrelated to food/restaurant/hotel recommendations, politely refuse.\n"
+            "- Prefer concise bullet lists with dish names and brief descriptions. Include 3-6 items.\n"
+            "- When suggesting hotels, mention why they are food/veg friendly."
+        )
+    )
 
-# display chat messages from history on app rerun
+# Display chat messages from history
 for message in st.session_state.messages:
     if isinstance(message, HumanMessage):
         with st.chat_message("user"):
@@ -55,72 +161,105 @@ for message in st.session_state.messages:
         with st.chat_message("assistant"):
             st.markdown(message.content)
 
-# create the bar where we can type messages
-prompt = st.chat_input("Ask me anything...")
+# Chat input
+prompt = st.chat_input("Enter a destination (e.g., Tokyo) and preferences (veg/allergies)...")
 
-# did the user submit a prompt?
 if prompt:
     start_time = time.time()
     
-    # add the message from the user (prompt) to the screen with streamlit
+    # Add user message
     with st.chat_message("user"):
         st.markdown(prompt)
         st.session_state.messages.append(HumanMessage(prompt))
 
-    # Get documents from Pinecone
+    # Domain guardrail
+    if not is_food_domain_query(prompt):
+        refusal = (
+            "I can help with food recommendations only. Please provide a destination and any dietary preferences."
+        )
+        with st.chat_message("assistant"):
+            st.markdown(refusal)
+            st.session_state.messages.append(AIMessage(refusal))
+        st.stop()
+
+    destination, is_veg, allergies = extract_preferences(prompt)
+    if not destination:
+        clarify = "Please provide a travel destination (e.g., 'I'm visiting Rome')."
+        with st.chat_message("assistant"):
+            st.markdown(clarify)
+            st.session_state.messages.append(AIMessage(clarify))
+        st.stop()
+
+    # Get documents from Pinecone (optional, may be empty)
     retriever = vector_store.as_retriever(
         search_type="similarity_score_threshold",
         search_kwargs={"k": 3, "score_threshold": 0.5},
     )
-    docs = retriever.invoke(prompt)
-    docs_text = "".join(d.page_content for d in docs) if docs else "No relevant local documents found."
+    docs = retriever.invoke(f"popular foods and restaurants in {destination}")
+    docs_text = "".join(d.page_content for d in docs) if docs else ""
 
     # Get web search results
     try:
-        web_results = search_tool.run(prompt)
-        web_text = f"Web Search Results: {web_results}"
+        queries = []
+        if is_veg:
+            queries.append(f"best vegetarian dishes {destination}")
+            queries.append(f"vegetarian friendly restaurants {destination}")
+            queries.append(f"vegetarian friendly hotels {destination}")
+        else:
+            queries.append(f"popular local dishes {destination}")
+            queries.append(f"best restaurants {destination}")
+            queries.append(f"best hotels for food lovers {destination}")
+        if allergies:
+            # Seek safe options avoiding allergens
+            safe = ", ".join(allergies)
+            queries.append(f"allergy friendly restaurants {destination} avoid {safe}")
+
+        def run_query(q: str) -> str:
+            try:
+                return f"Q: {q}\n{search_tool.run(q)}"
+            except Exception as _e:
+                return f"Q: {q}\n( search failed )"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            results = list(ex.map(run_query, queries))
+        web_results = "\n\n".join(results)
+        web_text = f"Web Search Results for {destination}:\n{web_results}"
     except Exception as e:
         web_results = None
         web_text = f"Web search failed: {e}"
-        st.warning("Web search encountered an error, but continuing with local documents.")
+        st.warning("Web search encountered an error; continuing without it.")
 
-    # Show progress indicator only for web search when needed
-    if docs and len(docs) > 0:
-        # Found documents, no progress message needed
-        pass
-    elif web_results:
-        # Only show web search progress when actually searching
-        with st.spinner("🌐 Searching the web...."):
-            pass
-
-    # initialize the llm (Groq + LLaMA3-70B)
-    try:
-        llm = ChatGroq(
-            api_key=os.environ.get("GROQ_API_KEY"),
-            model="llama3-70b-8192",  # Updated to Llama 3 70B model
-            temperature=0.7
-        )
-    except Exception as e:
-        st.error(f"Error initializing LLM: {e}")
-        st.error("Please check your GROQ_API_KEY and model name")
+    # Check for Groq API key
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if not groq_api_key:
+        st.error("GROQ_API_KEY not found in environment variables")
+        st.error("Please set your GROQ_API_KEY in the .env file")
         st.stop()
 
-    # creating the system prompt with both sources
-    system_prompt = """You are a helpful AI assistant with access to both local documents and current web information.
+    # Create system prompt with contexts
+    system_prompt = """You are a cultural travel food guide. STRICT RULES:
+    - Scope: Only recommend foods, dishes, restaurants, and food-relevant hotels in the given destination.
+    - Vegetarian: If vegetarian=true, only suggest vegetarian or clearly veg-friendly options; label them.
+    - Allergies: Avoid dishes containing these allergens: {allergies}. If any item is ambiguous, warn and suggest asking staff.
+    - Refuse unrelated questions with one sentence.
+    - Output format: concise bullet lists with 3-6 items per section. Include a one-line reason for each.
 
-    For simple greetings or casual conversation, respond naturally and briefly (1-2 sentences).
-    For actual questions or requests for information, use the context below to provide comprehensive answers.
-    
-    Keep your answers concise and informative.
-    
-    Local Documents Context: {local_context}
-    
-    Web Search Context: {web_context}"""
+    Destination: {destination}
+    Preferences: vegetarian={vegetarian}, allergies={allergies}
 
-    # Populate the system prompt with both contexts
+    Local Documents Context:
+    {local_context}
+
+    Web Search Context:
+    {web_context}
+    """
+
     system_prompt_fmt = system_prompt.format(
-        local_context=docs_text,
-        web_context=web_text
+        destination=destination,
+        vegetarian=str(is_veg),
+        allergies=", ".join(allergies) if allergies else "none",
+        local_context=docs_text or "",
+        web_context=web_text or ""
     )
 
     print("-- SYS PROMPT --")
@@ -128,37 +267,18 @@ if prompt:
     print(f"📚 Local docs found: {len(docs) if docs else 0}")
     print(f"🌐 Web search results: {'Yes' if web_results else 'No'}")
 
-    # adding the system prompt to the message history
+    # Add system prompt to message history
     st.session_state.messages.append(SystemMessage(system_prompt_fmt))
 
-    # invoking the llm with minimal progress messages
-    if docs and len(docs) > 0:
-        # Found documents, just generate response
-        try:
-            result = llm.invoke(st.session_state.messages).content
-        except Exception as e:
-            st.error(f"Error calling LLM: {e}")
-            st.error("Please check your GROQ_API_KEY and model access")
-            st.stop()
-    elif web_results:
-        # Web search needed, show progress
-        with st.spinner("🌐 Searching the web..."):
-            try:
-                result = llm.invoke(st.session_state.messages).content
-            except Exception as e:
-                st.error(f"Error calling LLM: {e}")
-                st.error("Please check your GROQ_API_KEY and model access")
-                st.stop()
-    else:
-        # No sources, just generate
-        try:
-            result = llm.invoke(st.session_state.messages).content
-        except Exception as e:
-            st.error(f"Error calling LLM: {e}")
-            st.error("Please check your GROQ_API_KEY and model access")
-            st.stop()
+    # Call Groq API directly
+    try:
+        result = call_groq_api(st.session_state.messages, groq_api_key)
+    except Exception as e:
+        st.error(f"Error calling Groq API: {e}")
+        st.error("Please check your GROQ_API_KEY and model access")
+        st.stop()
 
-    # adding the response from the llm to the screen (and chat)
+    # Add LLM response to chat
     with st.chat_message("assistant"):
         st.markdown(result)
         st.session_state.messages.append(AIMessage(result))
