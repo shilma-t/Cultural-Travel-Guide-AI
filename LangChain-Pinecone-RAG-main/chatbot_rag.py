@@ -98,7 +98,8 @@ if "messages" not in st.session_state:
             "- If the request is unrelated to activities or travel, politely refuse.\n"
             "- Prefer concise bullet lists with 3-6 activity suggestions.\n"
             "- Include a one-line reason why each activity is culturally or locally significant.\n"
-            "- Include estimated duration (hours) or approximate cost if available."
+            "- Include estimated duration (hours) or approximate cost if available.\n"
+            "- Categorize activities under: Museums & Culture, Outdoor Activities, Food & Drink, Festivals & Events."
         )
     )
 
@@ -170,13 +171,14 @@ if prompt:
         st.error("GROQ_API_KEY not found in environment variables")
         st.stop()
 
-    # System prompt with duration/cost
+    # System prompt with categories and duration/cost
     system_prompt = f"""You are a cultural travel activity guide. STRICT RULES:
     - Scope: Only recommend activities, attractions, and experiences in the given destination.
     - Refuse unrelated questions with one sentence.
-    - Output format: concise bullet lists with 3-6 items per section.
+    - Output format: concise bullet lists with 3-6 items per category.
     - For each activity, include a one-line reason why it is culturally or locally significant.
     - Include estimated duration (hours) or approximate cost if available.
+    - Categorize activities under these headings: Museums & Culture, Outdoor Activities, Food & Drink, Festivals & Events.
 
     Destination: {destination}
 
@@ -190,7 +192,7 @@ if prompt:
 
     # Call Groq API
     try:
-        with st.spinner("Finding activities with estimated duration and cost..."):
+        with st.spinner("Finding activities with categories, duration, and cost..."):
             result = call_groq_api(st.session_state.messages, groq_api_key)
     except Exception as e:
         st.error(f"Error calling Groq API: {e}")
