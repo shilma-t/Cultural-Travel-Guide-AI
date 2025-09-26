@@ -18,7 +18,91 @@ import json
 # Load environment variables
 load_dotenv()
 
-st.title("Cultural Travel Food Guide (Veg + Allergy Aware)")
+# Page setup
+st.set_page_config(
+    page_title="🌍 Cultural Travel Food Guide",
+    page_icon="🍲",
+    layout="wide",
+)
+
+# ---------------- UI Layer Only ----------------
+st.markdown("""
+<style>
+    /* Background gradient */
+    body {
+        background: linear-gradient(135deg, #f3f9ff, #fff7f3);
+    }
+
+    /* Title */
+    h1, h2, h3 {
+        font-family: "Trebuchet MS", sans-serif;
+        font-weight: bold;
+        color: #ff7b54;
+    }
+
+    /* Chat bubbles */
+    .chat-bubble {
+        padding: 1rem;
+        border-radius: 1rem;
+        margin: 0.5rem 0;
+        max-width: 80%;
+        font-size: 1rem;
+        line-height: 1.4;
+    }
+    .user-bubble {
+        background: #DCF8C6;
+        margin-left: auto;
+        text-align: right;
+    }
+    .assistant-bubble {
+        background: #ffffff;
+        border: 1px solid #ddd;
+        margin-right: auto;
+        text-align: left;
+    }
+
+    /* Buttons */
+    .stButton>button {
+        background: #ff7b54;
+        color: white;
+        font-weight: bold;
+        border-radius: 12px;
+        padding: 0.6rem 1.2rem;
+        border: none;
+        transition: 0.3s;
+    }
+    .stButton>button:hover {
+        background: #ff9b74;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #fafafa;
+        border-right: 1px solid #eee;
+    }
+
+    /* Input box */
+    div[data-baseweb="input"] {
+        border-radius: 12px !important;
+        border: 1px solid #ff7b54 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Header (UI only)
+st.markdown(
+    """
+    <div style="text-align:center;">
+        <h1>🌍 Cultural Travel Food Guide</h1>
+        <p style="font-size:18px; color:#555;">
+        Vegetarian & Allergy-Aware Recommendations — Discover the world through food!
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
 
 # Cache expensive operations
 @st.cache_resource
@@ -282,3 +366,4 @@ if prompt:
     with st.chat_message("assistant"):
         st.markdown(result)
         st.session_state.messages.append(AIMessage(result))
+
