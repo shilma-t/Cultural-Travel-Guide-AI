@@ -16,11 +16,12 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 import concurrent.futures
 
+# Load environment variables
 load_dotenv()
 
-st.title("Hybrid RAG Chatbot (Groq + LLaMA3-70B + Pinecone + Web Search)")
+st.title("Hybrid RAG Chatbot (Groq + Pinecone + Web Search)")
 
-# Performance optimization: Cache expensive operations
+# Cache expensive operations
 @st.cache_resource
 def get_pinecone_index():
     pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
@@ -37,16 +38,20 @@ def get_vector_store():
     embeddings = get_embeddings()
     return PineconeVectorStore(index=index, embedding=embeddings)
 
-# initialize components
+# Initialize components
 vector_store = get_vector_store()
 search_tool = DuckDuckGoSearchRun()
 
-# initialize chat history
+# Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    st.session_state.messages.append(SystemMessage("You are a helpful AI assistant with access to both local documents and current web information."))
+    st.session_state.messages.append(
+        SystemMessage(
+            "You are a helpful AI assistant with access to both local documents and current web information."
+        )
+    )
 
-# display chat messages from history on app rerun
+# Display chat messages from history
 for message in st.session_state.messages:
     if isinstance(message, HumanMessage):
         with st.chat_message("user"):
@@ -55,14 +60,13 @@ for message in st.session_state.messages:
         with st.chat_message("assistant"):
             st.markdown(message.content)
 
-# create the bar where we can type messages
+# Chat input
 prompt = st.chat_input("Ask me anything...")
 
-# did the user submit a prompt?
 if prompt:
     start_time = time.time()
     
-    # add the message from the user (prompt) to the screen with streamlit
+    # Add user message
     with st.chat_message("user"):
         st.markdown(prompt)
         st.session_state.messages.append(HumanMessage(prompt))
@@ -82,22 +86,13 @@ if prompt:
     except Exception as e:
         web_results = None
         web_text = f"Web search failed: {e}"
-        st.warning("Web search encountered an error, but continuing with local documents.")
+        st.warning("Web search encountered an error, continuing with local documents.")
 
-    # Show progress indicator only for web search when needed
-    if docs and len(docs) > 0:
-        # Found documents, no progress message needed
-        pass
-    elif web_results:
-        # Only show web search progress when actually searching
-        with st.spinner("🌐 Searching the web..."):
-            pass
-
-    # initialize the llm (Groq + LLaMA3-70B)
+    # Initialize LLM (Groq + supported model)
     try:
         llm = ChatGroq(
             api_key=os.environ.get("GROQ_API_KEY"),
-            model="llama3-70b-8192",  # Updated to Llama 3 70B model
+            model="llama-3.3-70b-versatile",  # Updated to current supported model
             temperature=0.7
         )
     except Exception as e:
@@ -105,7 +100,7 @@ if prompt:
         st.error("Please check your GROQ_API_KEY and model name")
         st.stop()
 
-    # creating the system prompt with both sources
+    # Create system prompt with contexts
     system_prompt = """You are a helpful AI assistant with access to both local documents and current web information.
 
     For simple greetings or casual conversation, respond naturally and briefly (1-2 sentences).
@@ -117,7 +112,6 @@ if prompt:
     
     Web Search Context: {web_context}"""
 
-    # Populate the system prompt with both contexts
     system_prompt_fmt = system_prompt.format(
         local_context=docs_text,
         web_context=web_text
@@ -128,37 +122,18 @@ if prompt:
     print(f"📚 Local docs found: {len(docs) if docs else 0}")
     print(f"🌐 Web search results: {'Yes' if web_results else 'No'}")
 
-    # adding the system prompt to the message history
+    # Add system prompt to message history
     st.session_state.messages.append(SystemMessage(system_prompt_fmt))
 
-    # invoking the llm with minimal progress messages
-    if docs and len(docs) > 0:
-        # Found documents, just generate response
-        try:
-            result = llm.invoke(st.session_state.messages).content
-        except Exception as e:
-            st.error(f"Error calling LLM: {e}")
-            st.error("Please check your GROQ_API_KEY and model access")
-            st.stop()
-    elif web_results:
-        # Web search needed, show progress
-        with st.spinner("🌐 Searching the web..."):
-            try:
-                result = llm.invoke(st.session_state.messages).content
-            except Exception as e:
-                st.error(f"Error calling LLM: {e}")
-                st.error("Please check your GROQ_API_KEY and model access")
-                st.stop()
-    else:
-        # No sources, just generate
-        try:
-            result = llm.invoke(st.session_state.messages).content
-        except Exception as e:
-            st.error(f"Error calling LLM: {e}")
-            st.error("Please check your GROQ_API_KEY and model access")
-            st.stop()
+    # Invoke the LLM
+    try:
+        result = llm.invoke(st.session_state.messages).content
+    except Exception as e:
+        st.error(f"Error calling LLM: {e}")
+        st.error("Please check your GROQ_API_KEY and model access")
+        st.stop()
 
-    # adding the response from the llm to the screen (and chat)
+    # Add LLM response to chat
     with st.chat_message("assistant"):
         st.markdown(result)
         st.session_state.messages.append(AIMessage(result))
