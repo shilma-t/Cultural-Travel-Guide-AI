@@ -130,7 +130,7 @@ if prompt:
 
     destination = extract_destination(prompt)
     if not destination:
-        clarify = "Please provide a travel destination (e.g., 'I'm visiting Rome')."
+        clarify = "Please provide a travel destination (e.g., 'I'm visiting Colombo')."
         with st.chat_message("assistant"):
             st.markdown(clarify)
             st.session_state.messages.append(AIMessage(clarify))
