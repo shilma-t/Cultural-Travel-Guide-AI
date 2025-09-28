@@ -108,9 +108,7 @@ def safety_filter(text: str) -> List[str]:
     flagged = [kw for kw in SAFETY_KEYWORDS if kw in lowered]
     return flagged
 
-# -------------------------
-# Hardcoded city → language map
-# -------------------------
+#city language map
 CITY_LANG_MAP: Dict[str, str] = {
     "new york": "English",
     "los angeles": "English",
@@ -254,9 +252,8 @@ CITY_LANG_MAP: Dict[str, str] = {
     "anuradhapura": "Sinhala"
 }
 
-# -------------------------
 # Endpoints
-# -------------------------
+#text summerization additional feature
 @app.post("/v1/summary", response_model=SummaryResponse)
 async def summarize(req: TextRequest, x_api_key: Optional[str] = Header(None)):
     check_api_key(x_api_key)
@@ -308,9 +305,7 @@ async def embed(req: TextRequest, x_api_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
     return {"vector": vector}
 
-# -------------------------
 # New city language endpoint
-# -------------------------
 @app.post("/v1/city_language", response_model=CityLanguageResponse)
 async def city_language(req: CityRequest, x_api_key: Optional[str] = Header(None)):
     check_api_key(x_api_key)
@@ -320,6 +315,7 @@ async def city_language(req: CityRequest, x_api_key: Optional[str] = Header(None
         raise HTTPException(status_code=404, detail=f"No language info available for city '{req.city}'")
     return {"city": req.city, "language": language}
 
+#agent message which will send a message to the backend agent
 @app.post("/v1/agent_message")
 async def agent_message(msg: AgentMessage, x_api_key: Optional[str] = Header(None)):
     check_api_key(x_api_key)
@@ -334,7 +330,7 @@ async def agent_message(msg: AgentMessage, x_api_key: Optional[str] = Header(Non
         lang_resp = await city_language(CityRequest(city=city), x_api_key=x_api_key)
         return {"status":"ok", "action":"language", "result": lang_resp}
     return {"status":"ok", "action":"ack", "received_at": time.time()}
-
+#health check used to check if the api is running or not
 @app.get("/health")
 async def health():
     return {"status":"ok", "models_loaded": True, "time": time.time()}
