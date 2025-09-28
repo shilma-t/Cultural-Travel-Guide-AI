@@ -113,7 +113,7 @@ for message in st.session_state.messages:
             st.markdown(message.content)
 
 # Chat input
-prompt = st.chat_input("Enter a destination (e.g., Tokyo) and ask for activities...")
+prompt = st.chat_input("Enter a destination (e.g., I'm visiting Colombo) and ask for activities...")
 
 if prompt:
     start_time = time.time()
