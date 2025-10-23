@@ -104,3 +104,5 @@ spacy==3.7.5
 cryptography==43.0.3
 sentence-transformers==3.4.1
 faiss-cpu==1.9.0
+
+googletrans==3.1.0-alpha
