@@ -1,0 +1,154 @@
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mindex f718891..792a1c7 100644[m
+Binary files a/.gitignore and b/.gitignore differ
+[1mdiff --git a/LangChain-Pinecone-RAG-main/.env.example b/LangChain-Pinecone-RAG-main/.env.example[m
+[1mnew file mode 100644[m
+[1mindex 0000000..d6bc779[m
+[1m--- /dev/null[m
+[1m+++ b/LangChain-Pinecone-RAG-main/.env.example[m
+[36m@@ -0,0 +1,14 @@[m
+[32m+[m[32m# LLM / API keys[m
+[32m+[m[32mGROQ_API_KEY=YOUR_GROQ_API_KEY[m
+[32m+[m[32mGROQ_MODEL=llama3-70b-8192[m
+[32m+[m[32mOPENAI_API_KEY=YOUR_OPENAI_API_KEY[m
+[32m+[m[32mOPENAI_MODEL=gpt-4o[m
+[32m+[m
+[32m+[m[32m# Pinecone[m
+[32m+[m[32mPINECONE_API_KEY=pcsk_7RkKEM_9rL4sExmbRVRXVSU6mMenzqVJ5fsPKrQTC13DdwdZnJxMJn1ky2dWkmT8LTrrP9[m
+[32m+[m[32mPINECONE_ENV=us-east1-gcp[m
+[32m+[m[32mPINECONE_INDEX_NAME=culturetravel[m
+[32m+[m
+[32m+[m[32m# Agent config[m
+[32m+[m[32mLANG_AGENT_API_KEY=your_language_agent_api_key[m
+[32m+[m[32mLANG_AGENT_LOG_DIR=logs[m
+[1mdiff --git a/LangChain-Pinecone-RAG-main/.gitignore b/LangChain-Pinecone-RAG-main/.gitignore[m
+[1mindex 9575c37..50a19c6 100644[m
+[1m--- a/LangChain-Pinecone-RAG-main/.gitignore[m
+[1m+++ b/LangChain-Pinecone-RAG-main/.gitignore[m
+[36m@@ -1,4 +1,2 @@[m
+ .env[m
+[31m-venv/[m
+[31m-venv_new/[m
+[31m-.venv[m
+[32m+[m[32mvenv[m
+\ No newline at end of file[m
+[1mdiff --git a/LangChain-Pinecone-RAG-main/__pycache__/app.cpython-311.pyc b/LangChain-Pinecone-RAG-main/__pycache__/app.cpython-311.pyc[m
+[1mnew file mode 100644[m
+[1mindex 0000000..ab56b20[m
+Binary files /dev/null and b/LangChain-Pinecone-RAG-main/__pycache__/app.cpython-311.pyc differ
+[1mdiff --git a/LangChain-Pinecone-RAG-main/__pycache__/culture_agent.cpython-312.pyc b/LangChain-Pinecone-RAG-main/__pycache__/culture_agent.cpython-312.pyc[m
+[1mdeleted file mode 100644[m
+[1mindex dda7516..0000000[m
+Binary files a/LangChain-Pinecone-RAG-main/__pycache__/culture_agent.cpython-312.pyc and /dev/null differ
+[1mdiff --git a/LangChain-Pinecone-RAG-main/__pycache__/culture_agent_api.cpython-312.pyc b/LangChain-Pinecone-RAG-main/__pycache__/culture_agent_api.cpython-312.pyc[m
+[1mdeleted file mode 100644[m
+[1mindex 01f8006..0000000[m
+Binary files a/LangChain-Pinecone-RAG-main/__pycache__/culture_agent_api.cpython-312.pyc and /dev/null differ
+[1mdiff --git a/LangChain-Pinecone-RAG-main/__pycache__/language_bot.cpython-311.pyc b/LangChain-Pinecone-RAG-main/__pycache__/language_bot.cpython-311.pyc[m
+[1mnew file mode 100644[m
+[1mindex 0000000..720d93f[m
+Binary files /dev/null and b/LangChain-Pinecone-RAG-main/__pycache__/language_bot.cpython-311.pyc differ
+[1mdiff --git a/LangChain-Pinecone-RAG-main/__pycache__/language_bot.cpython-313.pyc b/LangChain-Pinecone-RAG-main/__pycache__/language_bot.cpython-313.pyc[m
+[1mnew file mode 100644[m
+[1mindex 0000000..c56ec1f[m
+Binary files /dev/null and b/LangChain-Pinecone-RAG-main/__pycache__/language_bot.cpython-313.pyc differ
+[1mdiff --git a/LangChain-Pinecone-RAG-main/app.py b/LangChain-Pinecone-RAG-main/app.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f5df5d7[m
+[1m--- /dev/null[m
+[1m+++ b/LangChain-Pinecone-RAG-main/app.py[m
+[36m@@ -0,0 +1,164 @@[m
+[32m+[m[32mimport streamlit as st[m
+[32m+[m[32mimport requests[m
+[32m+[m[32mimport time[m
+[32m+[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32m# Configuration[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32mAPI_KEY = "716c8936e30e4289421bb54a0cd1318635f0804994699059fa12989c93821059"  # replace with real key[m
+[32m+[m[32mBASE_URL = "http://localhost:8000"  # adjust if FastAPI runs elsewhere[m
+[32m+[m
+[32m+[m[32mheaders = {"x-api-key": API_KEY}[m
+[32m+[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32m# Streamlit UI Setup[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32mst.set_page_config(page_title="Language Agent Chatbot", layout="wide")[m
+[32m+[m[32mst.markdown("<h1 style='text-align:center'>💬 Language Agent </h1>", unsafe_allow_html=True)[m
+[32m+[m[32mst.write("---")[m
+[32m+[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32m# Sidebar Menu[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32mmenu = st.sidebar.radio([m
+[32m+[m[32m    "Choose a feature",[m
+[32m+[m[32m    ["City/Country → Language (Chat)", "Summary", "NER", "Embeddings", "Agent Message", "Health Check"][m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32m# City/Country → Language Chat (Main Chat Interface)[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32mif menu == "City/Country → Language (Chat)":[m
+[32m+[m[32m    st.subheader("🌍 City/Country → 🗣 Language Chatbot")[m
+[32m+[m
+[32m+[m[32m    if "messages" not in st.session_state:[m
+[32m+[m[32m        st.session_state.messages = [][m
+[32m+[m
+[32m+[m[32m    # Display past messages[m
+[32m+[m[32m    for msg in st.session_state.messages:[m
+[32m+[m[32m        with st.chat_message(msg["role"]):[m
+[32m+[m[32m            st.markdown(msg["content"])[m
+[32m+[m
+[32m+[m[32m    # Chat input[m
+[32m+[m[32m    if prompt := st.chat_input("Enter a city or country name..."):[m
+[32m+[m[32m        st.chat_message("user").markdown(f"**You:** {prompt}")[m
+[32m+[m[32m        st.session_state.messages.append({"role": "user", "content": prompt})[m
+[32m+[m
+[32m+[m[32m        bot_reply = None[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            payload = {"city": prompt.strip()}[m
+[32m+[m[32m            resp = requests.post(f"{BASE_URL}/v1/city_language", json=payload, headers=headers)[m
+[32m+[m
+[32m+[m[32m            if resp.status_code == 200:[m
+[32m+[m[32m                data = resp.json()[m
+[32m+[m[32m                bot_reply = f"🌍 **{data['city']} → 🗣 {data['language']}**\n\n**Common Phrases:**"[m
+[32m+[m[32m                for k, v in data.get("common_phrases", {}).items():[m
+[32m+[m[32m                    bot_reply += f"\n- {k} → {v}"[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                bot_reply = f"❌ Error: {resp.json()}"[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            bot_reply = f"⚠️ Exception: {str(e)}"[m
+[32m+[m
+[32m+[m[32m        with st.chat_message("assistant"):[m
+[32m+[m[32m            st.markdown(bot_reply)[m
+[32m+[m[32m        st.session_state.messages.append({"role": "assistant", "content": bot_reply})[m
+[32m+[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32m# Summary[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32melif menu == "Summary":[m
+[32m+[m[32m    st.subheader("📝 Text Summarization")[m
+[32m+[m[32m    text_input = st.text_area("Enter text to summarize", height=200)[m
+[32m+[m[32m    max_tokens = st.slider("Max summary tokens", 50, 400, 150)[m
+[32m+[m
+[32m+[m[32m    if st.button("Summarize"):[m
+[32m+[m[32m        with st.spinner("Generating summary..."):[m
+[32m+[m[32m            payload = {"text": text_input, "max_summary_tokens": max_tokens}[m
+[32m+[m[32m            resp = requests.post(f"{BASE_URL}/v1/summary", json=payload, headers=headers)[m
+[32m+[m[32m            if resp.status_code == 200:[m
+[32m+[m[32m                st.success("✅ Summary generated")[m
+[32m+[m[32m                st.info(resp.json()["summary"])[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                st.error(resp.json())[m
+[32m+[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32m# NER[m
+[32m+[m[32m# -------------------------[m
+[32m+[m[32melif menu == "NER":[m
+[32m+[m[32m    st.subheader("🔍 Named Entity Recognition (NER)")[m
+[32m+[m[32m    text_input = st.text_area("Enter text for NER", height=200)[m
+[32m+[m[32m    if st.button("Extract Entities"):[m
+[32m+[m[32m        with st.spinner("Extracting entities..."):[m
+[32m+[m[32m            payload = {"text": text_input}[m
+[32m+[m[32m            resp = requests.post(f"{BASE_URL}/v1/ner", json=payload, headers=headers)[m
+[32m+[m[32m            if resp.status_cod
