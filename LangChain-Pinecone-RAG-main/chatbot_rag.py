@@ -1,25 +1,22 @@
-# import streamlit
 import streamlit as st
 import os
 import time
+import re
+from typing import Optional
 from dotenv import load_dotenv
+import concurrent.futures
+import requests
 
-# import pinecone
-from pinecone import Pinecone, ServerlessSpec
-
-# import langchain
+from pinecone import Pinecone
 from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-import concurrent.futures
 
 # Load environment variables
 load_dotenv()
 
-st.title("Hybrid RAG Chatbot (Groq + Pinecone + Web Search)")
+st.title("Cultural Travel Activity Guide")
 
 # Cache expensive operations
 @st.cache_resource
@@ -38,6 +35,55 @@ def get_vector_store():
     embeddings = get_embeddings()
     return PineconeVectorStore(index=index, embedding=embeddings)
 
+def is_activity_domain_query(text: str) -> bool:
+    text_l = text.lower()
+    activity_terms = [
+        "things to do", "activities", "attractions", "landmarks", "places to see",
+        "sightseeing", "tour", "tours", "visit", "explore", "museums", "temples",
+        "parks", "hiking", "cultural show", "festival", "market", "experience"
+    ]
+    travel_terms = ["travel", "trip", "destination", "city", "country", "place", "visit"]
+    return any(t in text_l for t in activity_terms) or any(t in text_l for t in travel_terms)
+
+def extract_destination(text: str) -> Optional[str]:
+    patterns = [
+        r"in\s+([A-Z][A-Za-z\-\s]+)$",
+        r"to\s+([A-Z][A-Za-z\-\s]+)$",
+        r"at\s+([A-Z][A-Za-z\-\s]+)$",
+        r"(?:go(?:ing)?\s+to|visit(?:ing)?)\s+([A-Z][A-Za-z\-\s]+)",
+    ]
+    text_stripped = text.strip()
+    for pat in patterns:
+        m = re.search(pat, text_stripped, flags=re.IGNORECASE)
+        if m:
+            dest = m.group(1).strip(" .!,?")
+            return dest
+    tokens = re.findall(r"[A-Z][A-Za-z\-]+(?:\s+[A-Z][A-Za-z\-]+)*", text_stripped)
+    if tokens:
+        return tokens[-1]
+    return None
+
+def call_groq_api(messages: list, api_key: str) -> str:
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    groq_messages = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            groq_messages.append({"role": "system", "content": msg.content})
+        elif isinstance(msg, HumanMessage):
+            groq_messages.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            groq_messages.append({"role": "assistant", "content": msg.content})
+    data = {"model": "llama-3.3-70b-versatile", "messages": groq_messages,
+            "temperature": 0.4, "max_tokens": 1000}
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    except Exception as e:
+        raise Exception(f"Groq API error: {e}")
+
 # Initialize components
 vector_store = get_vector_store()
 search_tool = DuckDuckGoSearchRun()
@@ -47,7 +93,13 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append(
         SystemMessage(
-            "You are a helpful AI assistant with access to both local documents and current web information."
+            "You are a cultural travel guide focused strictly on activity recommendations. "
+            "You: \n- Only discuss activities, attractions, experiences, and things to do in the requested destination.\n"
+            "- If the request is unrelated to activities or travel, politely refuse.\n"
+            "- Prefer concise bullet lists with 3-6 activity suggestions.\n"
+            "- Include a one-line reason why each activity is culturally or locally significant.\n"
+            "- Include estimated duration (hours) or approximate cost if available.\n"
+            "- Categorize activities under: Museums & Culture, Outdoor Activities, Food & Drink, Festivals & Events."
         )
     )
 
@@ -61,79 +113,90 @@ for message in st.session_state.messages:
             st.markdown(message.content)
 
 # Chat input
-prompt = st.chat_input("Ask me anything...")
+prompt = st.chat_input("Enter a destination (e.g., I'm visiting Colombo) and ask for activities...")
 
 if prompt:
     start_time = time.time()
-    
-    # Add user message
     with st.chat_message("user"):
         st.markdown(prompt)
         st.session_state.messages.append(HumanMessage(prompt))
 
-    # Get documents from Pinecone
-    retriever = vector_store.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": 3, "score_threshold": 0.5},
-    )
-    docs = retriever.invoke(prompt)
-    docs_text = "".join(d.page_content for d in docs) if docs else "No relevant local documents found."
+    if not is_activity_domain_query(prompt):
+        refusal = "I can help with activity recommendations only. Please provide a destination."
+        with st.chat_message("assistant"):
+            st.markdown(refusal)
+            st.session_state.messages.append(AIMessage(refusal))
+        st.stop()
 
-    # Get web search results
+    destination = extract_destination(prompt)
+    if not destination:
+        clarify = "Please provide a travel destination (e.g., 'I'm visiting Colombo')."
+        with st.chat_message("assistant"):
+            st.markdown(clarify)
+            st.session_state.messages.append(AIMessage(clarify))
+        st.stop()
+
+    # Pinecone retriever
+    retriever = vector_store.as_retriever(search_type="similarity_score_threshold",
+                                         search_kwargs={"k": 3, "score_threshold": 0.5})
+    docs = retriever.invoke(f"popular attractions and activities in {destination}")
+    docs_text = "".join(d.page_content for d in docs) if docs else ""
+
+    # Web search
     try:
-        web_results = search_tool.run(prompt)
-        web_text = f"Web Search Results: {web_results}"
+        queries = [
+            f"best activities {destination}",
+            f"top attractions {destination}",
+            f"things to do {destination}",
+            f"unique cultural experiences {destination}"
+        ]
+        def run_query(q: str) -> str:
+            try:
+                return f"Q: {q}\n{search_tool.run(q)}"
+            except Exception:
+                return f"Q: {q}\n( search failed )"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            results = list(ex.map(run_query, queries))
+        web_results = "\n\n".join(results)
+        web_text = f"Web Search Results for {destination}:\n{web_results}"
     except Exception as e:
         web_results = None
         web_text = f"Web search failed: {e}"
-        st.warning("Web search encountered an error, continuing with local documents.")
+        st.warning("Web search encountered an error; continuing without it.")
 
-    # Initialize LLM (Groq + supported model)
-    try:
-        llm = ChatGroq(
-            api_key=os.environ.get("GROQ_API_KEY"),
-            model="llama-3.3-70b-versatile",  # Updated to current supported model
-            temperature=0.7
-        )
-    except Exception as e:
-        st.error(f"Error initializing LLM: {e}")
-        st.error("Please check your GROQ_API_KEY and model name")
+    # Check Groq API key
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if not groq_api_key:
+        st.error("GROQ_API_KEY not found in environment variables")
         st.stop()
 
-    # Create system prompt with contexts
-    system_prompt = """You are a helpful AI assistant with access to both local documents and current web information.
+    # System prompt with categories and duration/cost
+    system_prompt = f"""You are a cultural travel activity guide. STRICT RULES:
+    - Scope: Only recommend activities, attractions, and experiences in the given destination.
+    - Refuse unrelated questions with one sentence.
+    - Output format: concise bullet lists with 3-6 items per category.
+    - For each activity, include a one-line reason why it is culturally or locally significant.
+    - Include estimated duration (hours) or approximate cost if available.
+    - Categorize activities under these headings: Museums & Culture, Outdoor Activities, Food & Drink, Festivals & Events.
 
-    For simple greetings or casual conversation, respond naturally and briefly (1-2 sentences).
-    For actual questions or requests for information, use the context below to provide comprehensive answers.
-    
-    Keep your answers concise and informative.
-    
-    Local Documents Context: {local_context}
-    
-    Web Search Context: {web_context}"""
+    Destination: {destination}
 
-    system_prompt_fmt = system_prompt.format(
-        local_context=docs_text,
-        web_context=web_text
-    )
+    Local Documents Context:
+    {docs_text}
 
-    print("-- SYS PROMPT --")
-    print(system_prompt_fmt)
-    print(f"📚 Local docs found: {len(docs) if docs else 0}")
-    print(f"🌐 Web search results: {'Yes' if web_results else 'No'}")
+    Web Search Context:
+    {web_text}
+    """
+    st.session_state.messages.append(SystemMessage(system_prompt))
 
-    # Add system prompt to message history
-    st.session_state.messages.append(SystemMessage(system_prompt_fmt))
-
-    # Invoke the LLM
+    # Call Groq API
     try:
-        result = llm.invoke(st.session_state.messages).content
+        with st.spinner("Finding activities with categories, duration, and cost..."):
+            result = call_groq_api(st.session_state.messages, groq_api_key)
     except Exception as e:
-        st.error(f"Error calling LLM: {e}")
-        st.error("Please check your GROQ_API_KEY and model access")
+        st.error(f"Error calling Groq API: {e}")
         st.stop()
-
-    # Add LLM response to chat
     with st.chat_message("assistant"):
         st.markdown(result)
         st.session_state.messages.append(AIMessage(result))
