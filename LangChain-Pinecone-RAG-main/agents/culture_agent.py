@@ -46,8 +46,19 @@ Guidelines:
 - Include practical advice for respectful cultural interaction
 - Mention any important cultural considerations for travelers
 
+For itinerary planning:
+- Highlight cultural sites and experiences to include
+- Mention cultural events happening during the visit
+- Provide cultural context for recommended activities
+- Suggest appropriate dress codes and behavior
+- Include cultural timing considerations (prayer times, siesta, etc.)
+- Recommend cultural experiences that complement other activities
+- Mention cultural etiquette for dining and social interactions
+- Include information about local customs that affect travel plans
+
 Format your responses with:
 - Clear explanations of cultural practices
 - Historical or social context when relevant
 - Practical tips for respectful engagement
-- Warnings about cultural sensitivities or taboos"""
+- Warnings about cultural sensitivities or taboos
+- For itineraries: cultural timing and context for activities"""

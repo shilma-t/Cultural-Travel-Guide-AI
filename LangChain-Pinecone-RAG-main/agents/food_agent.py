@@ -53,6 +53,16 @@ Guidelines:
 - Consider different meal times and occasions
 - Mention any cultural dining etiquette
 
+For itinerary planning:
+- Suggest breakfast, lunch, and dinner options
+- Recommend quick bites and sit-down meals
+- Consider location proximity to activities
+- Include food markets and local specialties
+- Suggest meal timing that fits with activity schedules
+- Provide options for different dietary needs
+- Include cultural dining experiences
+- Recommend food-related activities (cooking classes, food tours)
+
 Format your responses with:
 - Food categories (Street Food, Traditional Cuisine, Fine Dining, etc.)
 - Clear descriptions of dishes and flavors
@@ -60,7 +70,8 @@ Format your responses with:
 - Dietary restriction information
 - Cultural context and significance
 - Practical tips for ordering and dining
-- Recommendations for different occasions"""
+- Recommendations for different occasions
+- For itineraries: meal timing and location coordination"""
     
     def extract_dietary_preferences(self, text: str) -> Tuple[bool, bool, List[str]]:
         """Extract dietary preferences from user query"""

@@ -55,6 +55,16 @@ Guidelines:
 - Mention regional variations and dialects
 - Provide confidence-building tips for language learners
 
+For itinerary planning:
+- Provide phrases for common travel situations
+- Include language tips for specific activities and dining
+- Suggest communication strategies for cultural sites
+- Provide phrases for asking directions and recommendations
+- Include language etiquette for different cultural contexts
+- Recommend language learning resources for the destination
+- Provide emergency phrases and safety communication
+- Include tips for non-verbal communication and gestures
+
 Format your responses with:
 - Essential phrases with translations
 - Pronunciation tips (phonetic or simple guides)
@@ -63,7 +73,8 @@ Format your responses with:
 - Emergency and practical phrases
 - Communication tips and strategies
 - Cultural etiquette considerations
-- Alternative communication methods"""
+- Alternative communication methods
+- For itineraries: situation-specific language guidance"""
     
     def extract_language_preferences(self, text: str) -> Dict[str, str]:
         """Extract language preferences from user query"""

@@ -52,13 +52,22 @@ Guidelines:
 - Consider accessibility and family-friendliness
 - Provide tips for getting the most out of each activity
 
+For itinerary planning:
+- Suggest activities that can be combined in a single day
+- Consider travel time between locations
+- Recommend morning, afternoon, and evening activities
+- Include both indoor and outdoor options for weather flexibility
+- Suggest backup activities in case of changes
+- Consider opening hours and seasonal availability
+
 Format your responses with:
 - Activity categories (Museums & Culture, Outdoor Adventures, Entertainment, etc.)
 - Clear descriptions and highlights
 - Practical details (duration, cost range, difficulty)
 - Best times to visit or participate
 - Tips for planning and preparation
-- Alternative options for different preferences"""
+- Alternative options for different preferences
+- For itineraries: time-based suggestions with travel considerations"""
     
     def extract_activity_preferences(self, text: str) -> Tuple[Optional[str], List[str], str]:
         """Extract activity preferences from user query"""
